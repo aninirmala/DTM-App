@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Daily Tasks — Live Edit & Export</title>
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --accent:#0b66c3; --muted:#6b7280;
+    --high:#fff4f4; --med:#fffdf0; --low:#f3fbf5; --done:#f0f3f4;
+    --shadow: 0 6px 24px rgba(15,23,42,0.08);
+    --radius:12px;
+  }
+  body{font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:var(--bg); margin:20px; color:#0f172a;}
+  .wrap{max-width:1200px;margin:0 auto;}
+  .card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px;}
+  .header{display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:12px;}
+  .title{font-size:20px; font-weight:800; color:var(--accent);}
+  .controls{display:flex; gap:8px; align-items:center;}
+  .btn{background:var(--accent); color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:700;}
+  .btn.ghost{background:transparent; color:var(--accent); border:1px solid #e6eef9;}
+  .search{padding:8px 10px; border-radius:8px; border:1px solid #e5e7eb; min-width:220px;}
+  .toolbar{display:flex; gap:12px; margin-bottom:10px; flex-wrap:wrap; align-items:center;}
+  .left-tools{display:flex; gap:8px; align-items:center;}
+  .col-toggles{display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
+  .table-wrap{overflow:auto; border-radius:10px; border:1px solid #eef2f7; margin-top:8px;}
+  table{width:100%; border-collapse:collapse; min-width:980px;}
+  thead th{background:linear-gradient(90deg,#4f81bd,#0b66c3); color:white; font-weight:700; padding:12px; text-align:left; position:sticky; top:0; z-index:2; cursor:pointer; user-select:none;}
+  thead th .sort{font-size:11px; opacity:0.9; margin-left:8px;}
+  tbody td{padding:12px; border-bottom:1px solid #f1f5f9; vertical-align:top;}
+  .row-high{background:var(--high);}
+  .row-med{background:var(--med);}
+  .row-low{background:var(--low);}
+  .row-done{background:var(--done); color:var(--muted); font-style:italic;}
+  .id-cell{width:48px; text-align:center; font-weight:700; color:#374151;}
+  .priority-badge{display:inline-block; padding:4px 8px; border-radius:999px; font-weight:700; font-size:12px;}
+  .badge-high{background:#ffdada; color:#b91c1c;}
+  .badge-med{background:#fff3b2; color:#92400e;}
+  .badge-low{background:#d1fae5; color:#065f46;}
+  .status-pending{color:var(--accent); font-weight:700;}
+  .status-done{color:var(--muted); font-weight:700;}
+  .inline-edit{background:#fff; border-radius:6px; padding:6px;}
+  .row-actions{display:flex; gap:6px;}
+  .small{font-size:13px; color:var(--muted);}
+  .controls .export{display:inline-flex; gap:6px; align-items:center;}
+  .hidden{display:none;}
+  .summary{display:flex; gap:12px; align-items:center; font-weight:700; color:#0b3d91;}
+  .summary .chip{background:#eef6ff; padding:6px 10px; border-radius:10px; font-size:13px; color:#063b7a;}
+  textarea{font-family:inherit; font-size:14px; padding:6px; border-radius:6px; border:1px solid #e5e7eb;}
+  input[type="text"]{font-family:inherit; font-size:14px; padding:6px; border-radius:6px; border:1px solid #e5e7eb;}
+  select{padding:6px; border-radius:6px; border:1px solid #e5e7eb;}
+  @media (max-width:900px){
+    thead th, tbody td{padding:10px;}
+    .search{min-width:120px;}
+    .summary{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="title">Daily Tasks — Live Editor</div>
+        <div class="small">Edit inline. Use column toggles, sort & export to CSV or Excel.</div>
+      </div>
+      <div class="controls">
+        <div class="summary" id="summaryBox" aria-live="polite">
+          <div class="chip" id="totalCount">Total: 0</div>
+          <div class="chip" id="pendingCount">Pending: 0</div>
+          <div class="chip" id="doneCount">Done: 0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="left-tools">
+        <input id="search" class="search" placeholder="Search title or details..." />
+        <button class="btn" id="addRowBtn">+ Add Task</button>
+        <label class="small" style="margin-left:8px">Filter:</label>
+        <select id="filterSelect">
+          <option value="all">All</option>
+          <option value="pending" selected>Pending</option>
+          <option value="done">Done</option>
+        </select>
+        <label class="small" style="margin-left:10px">Sort by:</label>
+        <select id="sortSelect">
+          <option value="">(none)</option>
+          <option value="due_date">Due Date</option>
+          <option value="priority">Priority</option>
+          <option value="title">Title</option>
+        </select>
+        <button class="btn ghost" id="clearSearch">Reset</button>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <div class="col-toggles">
+        <div class="controls export">
+          <button class="btn ghost" id="exportCsvBtn">Export CSV</button>
+          <button class="btn" id="exportXlsxBtn">Export XLSX</button>
+        </div>
+        <label class="small" style="margin-left:8px">Columns:</label>
+        <label><input type="checkbox" data-col="id" checked> ID</label>
+        <label><input type="checkbox" data-col="title" checked> Title</label>
+        <label><input type="checkbox" data-col="details" checked> Details</label>
+        <label><input type="checkbox" data-col="due_date" checked> Due</label>
+        <label><input type="checkbox" data-col="priority" checked> Priority</label>
+        <label><input type="checkbox" data-col="status" checked> Status</label>
+        <label><input type="checkbox" data-col="created_on" checked> Created</label>
+        <label><input type="checkbox" data-col="notes" checked> Notes</label>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tasksTable" aria-label="Tasks table">
+        <thead>
+          <tr>
+            <th data-col="id">ID <span class="sort"></span></th>
+            <th data-col="title">Title <span class="sort"></span></th>
+            <th data-col="details">Details <span class="sort"></span></th>
+            <th data-col="due_date">Due <span class="sort"></span></th>
+            <th data-col="priority">Priority <span class="sort"></span></th>
+            <th data-col="status">Status <span class="sort"></span></th>
+            <th data-col="created_on">Created On <span class="sort"></span></th>
+            <th data-col="notes">Notes <span class="sort"></span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="height:18px"></div>
+  <div class="small">Tip: double-click a cell to edit (or click Edit). Changes are immediately in-memory — export when ready.</div>
+</div>
+
+<!-- SheetJS for XLSX export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+  // --- Persistence keys ---
+  const STORAGE_KEY = 'daily_tasks_v1';
+  const STORAGE_META = 'daily_tasks_v1_meta';
+
+  // Helper: today as ISO (yyyy-mm-dd)
+  function todayISO(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth()+1).padStart(2,'0');
+    const d = String(now.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // Convert ISO yyyy-mm-dd -> display dd-mm-yyyy
+  function formatDateDisplay(iso){
+    if(!iso) return '';
+    if(/^\d{2}-\d{2}-\d{4}$/.test(iso)) return iso;
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return iso;
+  }
+  // Parse display dd-mm-yyyy -> ISO yyyy-mm-dd
+  function parseDisplayDateToISO(s){
+    if(!s) return '';
+    s = s.trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if(m){
+      return `${m[3]}-${m[2]}-${m[1]}`;
+    }
+    const m2 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+    const d = new Date(s);
+    if(!isNaN(d)) {
+      const y = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
+      return `${y}-${mm}-${dd}`;
+    }
+    return '';
+  }
+
+  // Sample initial data (due_date stored as ISO)
+  let tasks = [
+    {id:1, title:"3-1 Regular Results Verification", details:"Verify results for section 3-1", due_date:"2025-12-08", priority:"High", status:"Pending", created_on:"2025-12-08 09:00:00", notes:""},
+    {id:2, title:"2-2 Supple Results Scanning", details:"Scan scanned copies", due_date:"2025-12-08", priority:"High", status:"Pending", created_on:"2025-12-08 09:15:00", notes:""},
+    {id:3, title:"First Year Pending Images Collection", details:"Collect images from students", due_date:"2025-12-09", priority:"Medium", status:"Pending", created_on:"2025-12-07 14:20:00", notes:""},
+    {id:4, title:"ISM Weekly Test", details:"Prepare question paper", due_date:"2025-12-10", priority:"Low", status:"Done", created_on:"2025-12-06 11:30:00", notes:"Completed by team"}
+  ];
+
+  // metadata persisted: visibleCols, sortState, filter, lastId
+  let visibleCols = { id:true, title:true, details:true, due_date:true, priority:true, status:true, created_on:true, notes:true };
+  let sortState = { col:null, dir:1 }; // dir: 1 asc, -1 desc
+  let meta = { lastId: 4, filter: 'pending', sort: '', search:'', visibleCols: visibleCols };
+
+  const tbody = document.querySelector('#tasksTable tbody');
+
+  // --- Persistence helpers ---
+  function saveToStorage(){
+    try {
+      const payload = { tasks: tasks, meta: meta };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch(e){
+      console.warn('Failed to save tasks to localStorage', e);
+    }
+  }
+  function loadFromStorage(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return false;
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed.tasks)) tasks = parsed.tasks;
+      if(parsed.meta) {
+        meta = Object.assign(meta, parsed.meta);
+        // restore visibleCols if present
+        if(meta.visibleCols) visibleCols = Object.assign(visibleCols, meta.visibleCols);
+      }
+      // ensure lastId exists
+      if(!meta.lastId) meta.lastId = tasks.length ? Math.max(...tasks.map(t=>t.id)) : 0;
+      return true;
+    } catch(e){
+      console.warn('Failed to load tasks from localStorage', e);
+      return false;
+    }
+  }
+  function clearStorage(){
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function updateSummary(displayTasks = null){
+    const data = displayTasks || tasks;
+    const total = data.length;
+    const done = data.filter(t=>t.status === 'Done').length;
+    const pending = total - done;
+    document.getElementById('totalCount').textContent = `Total: ${total}`;
+    document.getElementById('pendingCount').textContent = `Pending: ${pending}`;
+    document.getElementById('doneCount').textContent = `Done: ${done}`;
+  }
+
+  function renderTable(){
+    tbody.innerHTML = '';
+    const q = (document.getElementById('search').value || '').toLowerCase();
+    const filter = document.getElementById('filterSelect').value;
+    const sortBy = document.getElementById('sortSelect').value;
+
+    // Clone tasks array for sorting/filtering
+    let display = tasks.slice();
+
+    // Basic filter by status
+    if(filter === 'pending') display = display.filter(t => t.status !== 'Done');
+    else if(filter === 'done') display = display.filter(t => t.status === 'Done');
+
+    // Search filter
+    if(q) display = display.filter(t => (t.title||'').toLowerCase().includes(q) || (t.details||'').toLowerCase().includes(q));
+
+    // Sorting
+    if(sortBy){
+      display.sort((a,b) => {
+        let va = a[sortBy] || '', vb = b[sortBy] || '';
+        if(sortBy === 'priority'){
+          const map = { 'High': 1, 'Medium': 2, 'Low': 3, '': 4 };
+          return (map[va] - map[vb]) * (sortState.dir || 1);
+        }
+        if(sortBy === 'due_date'){
+          return ((va > vb) ? 1 : (va < vb ? -1 : 0)) * (sortState.dir || 1);
+        }
+        return va.toString().localeCompare(vb.toString()) * (sortState.dir || 1);
+      });
+    }
+
+    // Update summary for the currently displayed set
+    updateSummary(display);
+
+    // Render rows
+    for(const t of display){
+      const tr = document.createElement('tr');
+      // compute row class
+      let rclass = '';
+      if(t.status === 'Done') rclass = 'row-done';
+      else if(t.priority === 'High') rclass = 'row-high';
+      else if(t.priority === 'Medium') rclass = 'row-med';
+      else rclass = 'row-low';
+      tr.className = rclass;
+
+      // columns (respect visibleCols)
+      if(visibleCols.id){
+        const tdId = document.createElement('td'); tdId.className='id-cell'; tdId.textContent = t.id; tr.appendChild(tdId);
+      }
+      if(visibleCols.title){
+        const td = document.createElement('td'); td.innerHTML = `<strong class="editable" data-field="title" data-id="${t.id}">${escapeHtml(t.title||'')}</strong>`; td.title = "Double-click to edit"; tr.appendChild(td);
+      }
+      if(visibleCols.details){
+        const td = document.createElement('td'); td.innerHTML = `<div class="editable" data-field="details" data-id="${t.id}">${escapeHtml(t.details||'')}</div>`; tr.appendChild(td);
+      }
+      if(visibleCols.due_date){
+        const td = document.createElement('td'); td.innerHTML = `<div class="editable" data-field="due_date" data-id="${t.id}">${escapeHtml(formatDateDisplay(t.due_date||''))}</div>`; tr.appendChild(td);
+      }
+      if(visibleCols.priority){
+        const td = document.createElement('td');
+        const badge = (t.priority === 'High')? '<span class="priority-badge badge-high">High</span>' : (t.priority === 'Medium'? '<span class="priority-badge badge-med">Medium</span>' : '<span class="priority-badge badge-low">Low</span>');
+        td.innerHTML = `<div class="editable" data-field="priority" data-id="${t.id}">${badge}</div><div class="small" style="margin-top:6px">(${escapeHtml(t.priority||'')})</div>`;
+        tr.appendChild(td);
+      }
+      if(visibleCols.status){
+        const td = document.createElement('td'); td.innerHTML = `<div class="editable" data-field="status" data-id="${t.id}">${t.status === 'Done' ? '<span class="status-done">Done</span>' : '<span class="status-pending">Pending</span>'}</div>`; tr.appendChild(td);
+      }
+      if(visibleCols.created_on){
+        const td = document.createElement('td'); td.innerHTML = `<div class="small">${escapeHtml(t.created_on||'')}</div>`; tr.appendChild(td);
+      }
+      if(visibleCols.notes){
+        const td = document.createElement('td'); td.innerHTML = `<div class="editable" data-field="notes" data-id="${t.id}">${escapeHtml(t.notes||'')}</div>`; tr.appendChild(td);
+      }
+
+      // Actions
+      const act = document.createElement('td');
+      act.className = 'row-actions';
+      const toggleBtn = document.createElement('button'); toggleBtn.className='btn ghost'; toggleBtn.textContent = (t.status === 'Done' ? 'Unmark' : 'Mark Done');
+      toggleBtn.onclick = () => { toggleDone(t.id); };
+      const editBtn = document.createElement('button'); editBtn.className='btn ghost'; editBtn.textContent='Edit'; editBtn.onclick = () => { startInlineEdit(t.id); };
+      const delBtn = document.createElement('button'); delBtn.className='btn ghost'; delBtn.textContent='Delete'; delBtn.onclick = () => { if(confirm('Delete this task?')) deleteTask(t.id); };
+      act.appendChild(toggleBtn); act.appendChild(editBtn); act.appendChild(delBtn);
+      tr.appendChild(act);
+
+      tbody.appendChild(tr);
+    }
+
+    attachEditableHandlers();
+    // show sort arrow if set
+    document.querySelectorAll('#tasksTable thead th .sort').forEach(s => s.textContent='');
+    if(sortState.col){
+      const th = document.querySelector(`#tasksTable thead th[data-col="${sortState.col}"]`);
+      if(th) th.querySelector('.sort').textContent = (sortState.dir === 1 ? '▲' : '▼');
+    }
+  }
+
+  function escapeHtml(s){ if(s === undefined || s === null) return ''; return s.toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+  function attachEditableHandlers(){
+    // double-click to edit contenteditable
+    const editables = document.querySelectorAll('.editable');
+    editables.forEach(el => {
+      el.ondblclick = () => {
+        const id = el.dataset.id;
+        const field = el.dataset.field;
+        startCellEdit(id, field, el);
+      };
+    });
+  }
+
+  function startCellEdit(id, field, el){
+    const current = getTaskById(Number(id));
+    if(!current) return;
+    let val = current[field] || '';
+    let input;
+    if(field === 'details' || field === 'notes') {
+      input = document.createElement('textarea'); input.style.width='100%'; input.style.height='80px'; input.value = val;
+    } else if(field === 'priority'){
+      input = document.createElement('select');
+      ['High','Medium','Low'].forEach(o => { const op = document.createElement('option'); op.value=o; op.text=o; if(o===val) op.selected=true; input.appendChild(op); });
+    } else if(field === 'status'){
+      input = document.createElement('select');
+      ['Pending','Done'].forEach(o => { const op = document.createElement('option'); op.value=o; op.text=o; if(o===val) op.selected=true; input.appendChild(op); });
+    } else {
+      input = document.createElement('input'); input.type='text';
+      if(field === 'due_date'){
+        input.placeholder = 'DD-MM-YYYY';
+        input.value = formatDateDisplay(val);
+      } else {
+        input.value = val;
+      }
+    }
+
+    if(!el){
+      el = document.querySelector(`.editable[data-id="${id}"][data-field="${field}"]`);
+      if(!el) return;
+    }
+    el.innerHTML = '';
+    el.appendChild(input);
+    input.focus();
+
+    function commit(){
+      let newVal = input.value;
+      if(typeof newVal === 'string') newVal = newVal.trim();
+      if(field === 'due_date'){
+        const iso = parseDisplayDateToISO(newVal);
+        if(iso === ''){
+          alert('Please enter Due Date as DD-MM-YYYY (e.g. 08-12-2025) or a recognizable date.');
+          input.focus();
+          return;
+        }
+        updateTaskField(Number(id), field, iso);
+      } else {
+        updateTaskField(Number(id), field, newVal);
+      }
+      saveToStorage();
+      renderTable();
+    }
+    function cancel(){
+      renderTable();
+    }
+
+    input.onblur = commit;
+    input.onkeydown = (e) => { if(e.key === 'Enter' && !(input.tagName === 'TEXTAREA')){ commit(); } else if(e.key === 'Escape'){ cancel(); } };
+  }
+
+  function startInlineEdit(id){
+    const el = document.querySelector(`.editable[data-id="${id}"][data-field="title"]`);
+    if(el) el.ondblclick();
+  }
+
+  function getTaskById(id){ return tasks.find(t => Number(t.id) === Number(id)); }
+  function updateTaskField(id, field, value){
+    const t = getTaskById(id);
+    if(!t) return;
+    if(field === 'due_date') t.due_date = value || '';
+    else t[field] = value;
+    if(field === 'priority'){
+      const v = (value||'').toString();
+      if(!['High','Medium','Low'].includes(v)) t.priority = 'Medium';
+    }
+    if(field === 'status'){ t.status = (value==='Done') ? 'Done' : 'Pending'; }
+    // update metadata timestamp? not required
+  }
+
+  function toggleDone(id){
+    const t = getTaskById(id);
+    if(!t) return;
+    t.status = (t.status === 'Done') ? 'Pending' : 'Done';
+    saveToStorage();
+    renderTable();
+  }
+
+  function deleteTask(id){
+    tasks = tasks.filter(t => Number(t.id) !== Number(id));
+    saveToStorage();
+    renderTable();
+  }
+
+  function addRow(){
+    meta.lastId = meta.lastId ? (meta.lastId + 1) : ((tasks.length ? Math.max(...tasks.map(x=>x.id)) + 1 : 1));
+    const newId = meta.lastId;
+    const now = new Date();
+    const created = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+    const newTask = {
+      id: newId,
+      title: 'New Task',
+      details: 'Enter details...',
+      due_date: todayISO(),
+      priority: 'Medium',
+      status: 'Pending',
+      created_on: created,
+      notes: ''
+    };
+    tasks.push(newTask);
+    saveToStorage();
+    renderTable();
+    setTimeout(() => {
+      const rows = document.querySelectorAll('#tasksTable tbody tr');
+      if(rows.length) rows[rows.length-1].scrollIntoView({behavior:'smooth', block:'center'});
+    }, 80);
+  }
+
+  // --- Export CSV ---
+  function exportCSV(){
+    const cols = getVisibleColumns();
+    const rows = [];
+    rows.push(cols.map(c=>colLabel(c)));
+    const q = (document.getElementById('search').value || '').toLowerCase();
+    const filter = document.getElementById('filterSelect').value;
+    let display = tasks.slice();
+    if(filter === 'pending') display = display.filter(t => t.status !== 'Done');
+    else if(filter === 'done') display = display.filter(t => t.status === 'Done');
+    if(q) display = display.filter(t => (t.title||'').toLowerCase().includes(q) || (t.details||'').toLowerCase().includes(q));
+    for(const t of display){
+      const row = cols.map(c => stringifyCell(t[c], c));
+      rows.push(row);
+    }
+    const csv = rows.map(r => r.map(cell => `"${(cell||'').toString().replace(/"/g,'""')}"`).join(',')).join('\r\n');
+    downloadBlob(csv, 'text/csv;charset=utf-8;', 'daily_tasks_export.csv');
+  }
+
+  function colLabel(c){
+    return ({id:'ID', title:'Title', details:'Details', due_date:'Due Date', priority:'Priority', status:'Status', created_on:'Created On', notes:'Notes'})[c] || c;
+  }
+  function stringifyCell(v, col){
+    if(col === 'due_date'){
+      return formatDateDisplay(v || '');
+    }
+    if(v === undefined || v === null) return '';
+    return v.toString();
+  }
+
+  // --- Export XLSX (uses SheetJS) ---
+  function exportXLSX(){
+    const cols = getVisibleColumns();
+    const header = cols.map(c => colLabel(c));
+    const q = (document.getElementById('search').value || '').toLowerCase();
+    const filter = document.getElementById('filterSelect').value;
+    let display = tasks.slice();
+    if(filter === 'pending') display = display.filter(t => t.status !== 'Done');
+    else if(filter === 'done') display = display.filter(t => t.status === 'Done');
+    if(q) display = display.filter(t => (t.title||'').toLowerCase().includes(q) || (t.details||'').toLowerCase().includes(q));
+    const data = display.map(t => cols.map(c => stringifyCell(t[c], c)));
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tasks');
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([wbout], {type: 'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'daily_tasks_export.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function getVisibleColumns(){
+    return Object.keys(visibleCols).filter(c => visibleCols[c]);
+  }
+
+  function downloadBlob(text, mime, filename){
+    const blob = new Blob([text], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
+
+  // Column toggles
+  document.querySelectorAll('.col-toggles input[type=checkbox]').forEach(ch => {
+    const col = ch.dataset.col;
+    // set initial from visibleCols (in case loaded)
+    ch.checked = !!visibleCols[col];
+    ch.onchange = (e) => {
+      visibleCols[col] = e.target.checked;
+      // persist visibleCols in meta
+      meta.visibleCols = visibleCols;
+      document.querySelectorAll(`#tasksTable thead th`).forEach(th => {
+        if(th.dataset.col === col) th.style.display = e.target.checked ? '' : 'none';
+      });
+      saveToStorage();
+      renderTable();
+    };
+  });
+
+  // Hook UI controls
+  document.getElementById('addRowBtn').onclick = addRow;
+  document.getElementById('search').addEventListener('input', () => { meta.search = document.getElementById('search').value; saveToStorage(); renderTable(); });
+  document.getElementById('filterSelect').addEventListener('change', (e) => { meta.filter = e.target.value; saveToStorage(); renderTable(); });
+  document.getElementById('clearSearch').onclick = () => { document.getElementById('search').value=''; document.getElementById('filterSelect').value='pending'; meta.search=''; meta.filter='pending'; document.getElementById('sortSelect').value=''; meta.sort=''; sortState={col:null,dir:1}; saveToStorage(); renderTable(); };
+  document.getElementById('sortSelect').onchange = (e) => { meta.sort = e.target.value; sortState.dir = 1; saveToStorage(); renderTable(); };
+  document.getElementById('exportCsvBtn').onclick = exportCSV;
+  document.getElementById('exportXlsxBtn').onclick = exportXLSX;
+
+  // Table header click sorting (cycle asc/desc/none)
+  document.querySelectorAll('#tasksTable thead th').forEach(th => {
+    th.onclick = (ev) => {
+      const col = th.dataset.col;
+      if(!col) return;
+      if(sortState.col === col){ sortState.dir = -sortState.dir; }
+      else { sortState.col = col; sortState.dir = 1; document.getElementById('sortSelect').value = col; }
+      // store into meta
+      meta.sort = document.getElementById('sortSelect').value;
+      meta.sortDir = sortState.dir;
+      saveToStorage();
+      renderTable();
+      document.querySelectorAll('#tasksTable thead th .sort').forEach(s => s.textContent='');
+      th.querySelector('.sort').textContent = (sortState.dir === 1 ? '▲' : '▼');
+    };
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if(e.ctrlKey && e.key.toLowerCase() === 's'){ e.preventDefault(); exportCSV(); }
+    if(e.ctrlKey && e.key.toLowerCase() === 'e'){ e.preventDefault(); exportXLSX(); }
+    if(e.ctrlKey && e.key.toLowerCase() === 'n'){ e.preventDefault(); addRow(); }
+  });
+
+  // Utility: start with rendering and ensure headers visibility matches toggles
+  window.addEventListener('load', () => {
+    const loaded = loadFromStorage();
+    // restore UI states (filter/search/sort/visible columns)
+    if(meta.filter) document.getElementById('filterSelect').value = meta.filter;
+    if(meta.search) document.getElementById('search').value = meta.search;
+    if(meta.sort) {
+      document.getElementById('sortSelect').value = meta.sort;
+      sortState.col = meta.sort;
+      sortState.dir = meta.sortDir || 1;
+    }
+    // apply visibleCols to checkboxes & headers
+    document.querySelectorAll('.col-toggles input[type=checkbox]').forEach(ch => {
+      const c = ch.dataset.col;
+      const v = (visibleCols[c] !== undefined) ? visibleCols[c] : true;
+      ch.checked = v;
+      document.querySelectorAll(`#tasksTable thead th`).forEach(th => {
+        if(th.dataset.col === c) th.style.display = v ? '' : 'none';
+      });
+    });
+
+    renderTable();
+  });
+
+</script>
+</body>
+</html>
